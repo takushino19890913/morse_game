@@ -1,0 +1,144 @@
+- generic [ref=e5]:
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e8]: Canvasデモ
+      - generic [ref=e9]: 和文モールス
+      - generic [ref=e10]: 学習UI
+    - heading "和文モールス" [level=1] [ref=e11]
+    - paragraph [ref=e12]: 音ゲーと、短 / 長の組み合わせからひらがなを作るタブを切り替えられます。
+    - generic [ref=e13]:
+      - button "音ゲー" [ref=e14] [cursor=pointer]
+      - button "短 / 長 で文字を作る" [ref=e15] [cursor=pointer]
+  - generic [ref=e16]:
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - generic [ref=e20]: 文を入力
+          - textbox "たとえば：こんにちは" [ref=e21]: こんにちは
+        - generic [ref=e22]: 待機中は、ページ上のどこからでも Space / Enter で音確認できます。ゲーム開始は音ゲー開始ボタンです。
+        - generic [ref=e23]:
+          - button "こんにちは" [ref=e24] [cursor=pointer]
+          - button "おはよう" [ref=e25] [cursor=pointer]
+          - button "しずかせんせい" [ref=e26] [cursor=pointer]
+          - button "たすけて" [ref=e27] [cursor=pointer]
+        - generic [ref=e28]:
+          - generic [ref=e29]:
+            - generic [ref=e30]: 速さ
+            - slider [ref=e31]: "360"
+            - generic [ref=e32]: 1単位 = 360ms
+          - generic [ref=e33]:
+            - generic [ref=e34]: 音の高さ
+            - slider [ref=e35]: "650"
+            - generic [ref=e36]: 650Hz
+          - generic [ref=e37]:
+            - generic [ref=e38]: 音量
+            - slider [ref=e39]: "18"
+            - generic [ref=e40]: 18%
+        - generic [ref=e41]:
+          - button "見本だけ流す" [disabled] [ref=e42]:
+            - img [ref=e43]
+            - text: 見本だけ流す
+          - button "音ゲー開始" [disabled] [ref=e45]:
+            - img [ref=e46]
+            - text: 音ゲー開始
+          - button "停止" [ref=e50] [cursor=pointer]:
+            - img [ref=e51]
+            - text: 停止
+          - button "入力クリア" [ref=e53] [cursor=pointer]:
+            - img [ref=e54]
+            - text: 入力クリア
+      - generic [ref=e57]:
+        - generic [ref=e58]:
+          - generic [ref=e59]: いまの合図
+          - generic [ref=e60]: "2"
+          - generic [ref=e61]: "対象文字: こ"
+          - generic [ref=e62]:
+            - generic [ref=e63]:
+              - generic [ref=e64]: ガイド光
+              - generic [ref=e66]: "OFF"
+            - generic [ref=e67]:
+              - generic [ref=e68]: あなたの光
+              - generic [ref=e70]: "OFF"
+        - generic [ref=e71]:
+          - generic [ref=e72]: リアルタイムスコア
+          - generic [ref=e73]:
+            - generic [ref=e74]:
+              - generic [ref=e75]: スコア
+              - generic [ref=e76]: 0%
+            - generic [ref=e77]:
+              - generic [ref=e78]: 手入力の解読（参考）
+              - generic [ref=e79]: —
+            - generic [ref=e80]:
+              - generic [ref=e81]: Perfect / Good
+              - generic [ref=e82]: 0 / 0
+            - generic [ref=e83]:
+              - generic [ref=e84]: Miss
+              - generic [ref=e85]: "0"
+            - generic [ref=e86]:
+              - generic [ref=e87]: コンボ
+              - generic [ref=e88]: "0"
+            - generic [ref=e89]:
+              - generic [ref=e90]: 最大コンボ
+              - generic [ref=e91]: "0"
+    - generic [ref=e92]:
+      - generic [ref=e93]:
+        - generic [ref=e94]:
+          - generic [ref=e95]: 文字ガイド
+          - generic [ref=e96]: 今やっている文字を上で大きく表示
+        - generic [ref=e97]:
+          - img [ref=e98]
+          - text: 音ゲー中はガイド音もガイド光もなし。流れてくるノーツだけを見る
+      - generic [ref=e101]:
+        - generic [ref=e102]: こ
+        - generic [ref=e103]: ん
+        - generic [ref=e104]: に
+        - generic [ref=e105]: ち
+        - generic [ref=e106]: は
+      - generic [ref=e107]:
+        - generic [ref=e108]:
+          - generic [ref=e109]: レーン
+          - generic [ref=e110]: 白い縦線そのものが判定ライン
+        - generic [ref=e111]: 待機中は音確認。ゲーム開始はボタン。ゲーム中はノーツだけで判定
+      - generic [ref=e112]:
+        - generic [ref=e113]: 黄色のノーツ = 判定対象
+        - generic [ref=e114]: 青い光 = あなたの入力
+      - generic [ref=e115]:
+        - generic [ref=e122]: 判定ライン
+        - generic [ref=e124]: —
+        - generic [ref=e126]: —
+        - generic [ref=e128]:
+          - generic [ref=e129]: 右から流れる
+          - generic [ref=e130]: 白い縦線に来たら押す
+          - generic [ref=e131]: 点は軽く、線は長押し
+      - button "2" [disabled] [ref=e164]
+    - generic [ref=e133]:
+      - generic [ref=e134]:
+        - generic [ref=e135]: 次に来る文字
+        - generic [ref=e136]:
+          - generic [ref=e137]:
+            - generic [ref=e138]: こ
+            - generic [ref=e139]: －－－－
+          - generic [ref=e140]:
+            - generic [ref=e141]: ん
+            - generic [ref=e142]: ・－・－・
+          - generic [ref=e143]:
+            - generic [ref=e144]: に
+            - generic [ref=e145]: －・－・
+          - generic [ref=e146]:
+            - generic [ref=e147]: ち
+            - generic [ref=e148]: ・・－・
+          - generic [ref=e149]:
+            - generic [ref=e150]: は
+            - generic [ref=e151]: －・・・
+      - generic [ref=e152]:
+        - generic [ref=e153]: あなたの入力
+        - generic [ref=e154]:
+          - generic [ref=e155]:
+            - generic [ref=e156]: いまのコード
+            - generic [ref=e157]: —
+            - generic [ref=e158]: "仮の候補: —"
+          - generic [ref=e159]:
+            - generic [ref=e160]: 手入力の解読（参考）
+            - generic [ref=e161]: —
+            - generic [ref=e162]: 未入力
+    - generic [ref=e163]: 見本再生ではガイド音とガイド光がありますが、音ゲー中はどちらも使いません。青いバーがあなたの実入力です。採点はその青いバーとノーツの重なりをもとに行います。

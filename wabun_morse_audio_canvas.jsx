@@ -302,6 +302,7 @@ export default function WabunMorseAudioCanvas() {
 
   useEffect(() => {
     const isPlayKey = (event) => event.key === "Enter" || event.code === "Space" || event.key === " ";
+    const keyboardListenerOptions = { passive: false, capture: true };
     const isTypingTarget = (target) => {
       if (!(target instanceof HTMLElement)) return false;
       const tag = target.tagName;
@@ -340,12 +341,12 @@ export default function WabunMorseAudioCanvas() {
         handlePlayerPressEnd();
       };
 
-      window.addEventListener("keydown", handleKeyDown, { passive: false, capture: true });
-      window.addEventListener("keyup", handleKeyUp, { passive: false, capture: true });
+      window.addEventListener("keydown", handleKeyDown, keyboardListenerOptions);
+      window.addEventListener("keyup", handleKeyUp, keyboardListenerOptions);
       window.addEventListener("blur", handleBlur);
       return () => {
-        window.removeEventListener("keydown", handleKeyDown);
-        window.removeEventListener("keyup", handleKeyUp);
+        window.removeEventListener("keydown", handleKeyDown, keyboardListenerOptions);
+        window.removeEventListener("keyup", handleKeyUp, keyboardListenerOptions);
         window.removeEventListener("blur", handleBlur);
         keyHeldRef.current = false;
       };
@@ -373,12 +374,12 @@ export default function WabunMorseAudioCanvas() {
         keyHeldRef.current = false;
         stopIdleTone();
       };
-      window.addEventListener("keydown", handleIdleKeyDown, { passive: false, capture: true });
-      window.addEventListener("keyup", handleIdleKeyUp, { passive: false, capture: true });
+      window.addEventListener("keydown", handleIdleKeyDown, keyboardListenerOptions);
+      window.addEventListener("keyup", handleIdleKeyUp, keyboardListenerOptions);
       window.addEventListener("blur", handleIdleBlur);
       return () => {
-        window.removeEventListener("keydown", handleIdleKeyDown);
-        window.removeEventListener("keyup", handleIdleKeyUp);
+        window.removeEventListener("keydown", handleIdleKeyDown, keyboardListenerOptions);
+        window.removeEventListener("keyup", handleIdleKeyUp, keyboardListenerOptions);
         window.removeEventListener("blur", handleIdleBlur);
         keyHeldRef.current = false;
       };
