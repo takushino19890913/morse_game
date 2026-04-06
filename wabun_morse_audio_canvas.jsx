@@ -166,6 +166,10 @@ function updateFlagsFromScreen(flags, rect, judgeX) {
 
 export default function WabunMorseAudioCanvas() {
   const [activeTab, setActiveTab] = useState("game");
+  const [isFullscreenGameOpen, setIsFullscreenGameOpen] = useState(false);
+  const [isStartModalOpen, setIsStartModalOpen] = useState(false);
+  const [startModalMode, setStartModalMode] = useState("start");
+  const [draftStartText, setDraftStartText] = useState("こんにちは");
 
   const [text, setText] = useState("こんにちは");
   const [unitMs, setUnitMs] = useState(360);
@@ -198,6 +202,9 @@ export default function WabunMorseAudioCanvas() {
   const rafRef = useRef(null);
   const startAtRef = useRef(null);
   const laneRef = useRef(null);
+  const fullscreenGameRef = useRef(null);
+  const gameStageRef = useRef(null);
+  const startModalInputRef = useRef(null);
   const [laneWidth, setLaneWidth] = useState(900);
 
   const keyHeldRef = useRef(false);
@@ -216,6 +223,7 @@ export default function WabunMorseAudioCanvas() {
   const currentGroupRef = useRef(0);
   const manualCurrentCodeRef = useRef("");
   const manualRawEntriesRef = useRef([]);
+  const pendingStartAfterTextSyncRef = useRef(false);
 
   const encoded = useMemo(() => encodeText(text), [text]);
   const displayChars = useMemo(() => encoded.normalized.split("").filter((char) => char !== " " && char !== "　"), [encoded.normalized]);
@@ -299,6 +307,86 @@ export default function WabunMorseAudioCanvas() {
       if (audioCtxRef.current && audioCtxRef.current.state !== "closed") audioCtxRef.current.close().catch(() => {});
     };
   }, []);
+
+  useEffect(() => {
+    if (!isFullscreenGameOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isFullscreenGameOpen]);
+
+  useEffect(() => {
+    if (!isFullscreenGameOpen) return;
+    fullscreenGameRef.current?.focus();
+  }, [isFullscreenGameOpen]);
+
+  useEffect(() => {
+    if (!isFullscreenGameOpen) return undefined;
+
+    const handleEscape = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setIsFullscreenGameOpen(false);
+    };
+
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [isFullscreenGameOpen]);
+
+  useEffect(() => {
+    if (activeTab !== "game" && isFullscreenGameOpen) setIsFullscreenGameOpen(false);
+  }, [activeTab, isFullscreenGameOpen]);
+
+  useEffect(() => {
+    if (activeTab !== "game" && isStartModalOpen) setIsStartModalOpen(false);
+  }, [activeTab, isStartModalOpen]);
+
+  useEffect(() => {
+    if (!isStartModalOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    startModalInputRef.current?.focus();
+
+    const handleEscape = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setIsStartModalOpen(false);
+    };
+
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [isStartModalOpen]);
+
+  useEffect(() => {
+    if (!pendingStartAfterTextSyncRef.current) return;
+    pendingStartAfterTextSyncRef.current = false;
+    gameStageRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+    startGame().catch(console.error);
+  }, [text]);
+
+  useEffect(() => {
+    if (!isFullscreenGameOpen) return undefined;
+
+    const keyboardListenerOptions = { passive: false, capture: true };
+    const isPlayKey = (event) => event.key === "Enter" || event.code === "Space" || event.key === " ";
+    const handleFullscreenKeyDown = (event) => {
+      if (!isPlayKey(event) || event.repeat) return;
+      event.preventDefault();
+    };
+
+    window.addEventListener("keydown", handleFullscreenKeyDown, keyboardListenerOptions);
+    return () => {
+      window.removeEventListener("keydown", handleFullscreenKeyDown, keyboardListenerOptions);
+    };
+  }, [isFullscreenGameOpen]);
 
   useEffect(() => {
     const isPlayKey = (event) => event.key === "Enter" || event.code === "Space" || event.key === " ";
@@ -679,6 +767,47 @@ export default function WabunMorseAudioCanvas() {
     playerIntervalsRef.current = [];
   }
 
+  function blurTypingActiveElement() {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement)) return;
+    const tag = active.tagName;
+    const isTyping = tag === "INPUT" || tag === "TEXTAREA" || active.isContentEditable;
+    if (isTyping) active.blur();
+  }
+
+  function openStartModal(mode = "start") {
+    if (mode === "start" && sessionMode !== "idle") return;
+    setDraftStartText(text);
+    setStartModalMode(mode);
+    setIsStartModalOpen(true);
+  }
+
+  function closeStartModal() {
+    setIsStartModalOpen(false);
+  }
+
+  function confirmStartModal() {
+    const nextText = draftStartText.trim();
+    if (!nextText) return;
+
+    blurTypingActiveElement();
+    setIsStartModalOpen(false);
+
+    if (startModalMode === "edit") {
+      if (nextText !== text) setText(nextText);
+      return;
+    }
+
+    if (nextText !== text) {
+      pendingStartAfterTextSyncRef.current = true;
+      setText(nextText);
+      return;
+    }
+
+    gameStageRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+    startGame().catch(console.error);
+  }
+
   function stopAnimationLoop() {
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
@@ -709,6 +838,7 @@ export default function WabunMorseAudioCanvas() {
 
   async function preview() {
     if (!text.trim() || sessionMode !== "idle") return;
+    blurTypingActiveElement();
     clearInputState();
     guideRunIdRef.current += 1;
     const runId = guideRunIdRef.current;
@@ -729,6 +859,7 @@ export default function WabunMorseAudioCanvas() {
 
   async function startGame() {
     if (!text.trim() || sessionMode !== "idle") return;
+    blurTypingActiveElement();
     clearInputState();
     guideRunIdRef.current += 1;
     const runId = guideRunIdRef.current;
@@ -782,6 +913,21 @@ export default function WabunMorseAudioCanvas() {
     : sessionMode === "preview" ? (activeNote ? "ガイド再生中" : "まもなく来る")
     : "待機中";
 
+  const gameShellClassName = isFullscreenGameOpen
+    ? "rhythm-fullscreen fixed inset-0 z-50 overflow-hidden bg-[#020617] px-4 py-4 text-white md:px-6 md:py-6"
+    : "space-y-4";
+
+  const gameInnerClassName = isFullscreenGameOpen ? "mx-auto flex h-full max-w-7xl flex-col gap-4" : "space-y-4";
+  const charGuideViewportClassName = isFullscreenGameOpen
+    ? "mb-3 shrink-0 overflow-hidden rounded-3xl border border-slate-700 bg-slate-900/70 p-4"
+    : "mb-3 overflow-x-auto rounded-3xl border border-slate-700 bg-slate-900/70 p-4";
+  const charGuideTrackClassName = isFullscreenGameOpen
+    ? "flex flex-wrap items-center gap-3"
+    : "flex min-w-max items-center gap-3";
+  const charGuideCellClassName = isFullscreenGameOpen
+    ? "flex h-16 w-16 items-center justify-center rounded-3xl border text-3xl font-black transition-all sm:h-20 sm:w-20 sm:text-4xl"
+    : "flex h-20 w-20 items-center justify-center rounded-3xl border text-4xl font-black transition-all";
+
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-6">
       <div className="mx-auto max-w-6xl space-y-4">
@@ -807,116 +953,180 @@ export default function WabunMorseAudioCanvas() {
           </CardHeader>
           <CardContent className="space-y-4">
             {activeTab === "game" ? (
-              <>
-                <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium text-slate-700">文を入力</div>
-                      <Textarea value={text} onChange={(event) => setText(event.target.value)} className="min-h-24 rounded-2xl bg-white" placeholder="たとえば：こんにちは" />
-                    </div>
-
-                    <div className="rounded-2xl border bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                      待機中は、ページ上のどこからでも Space / Enter で音確認できます。ゲーム開始は音ゲー開始ボタンです。
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      {SAMPLE_TEXTS.map((sample) => (
-                        <Button key={sample} variant="secondary" className="rounded-2xl" onMouseDown={(event) => event.preventDefault()} onClick={() => setText(sample)}>
-                          {sample}
+              <div
+                ref={isFullscreenGameOpen ? fullscreenGameRef : null}
+                className={gameShellClassName}
+                role={isFullscreenGameOpen ? "dialog" : undefined}
+                aria-modal={isFullscreenGameOpen ? "true" : undefined}
+                aria-label={isFullscreenGameOpen ? "音ゲーフルスクリーン" : undefined}
+                tabIndex={isFullscreenGameOpen ? -1 : undefined}
+              >
+                <div className={gameInnerClassName}>
+                  {isFullscreenGameOpen ? (
+                    <div className="grid gap-4 rounded-[2rem] border border-white/10 bg-[linear-gradient(135deg,rgba(15,23,42,0.98),rgba(15,23,42,0.78))] px-5 py-5 shadow-[0_24px_80px_rgba(2,6,23,0.55)] lg:grid-cols-[minmax(0,1fr)_auto]">
+                      <div className="space-y-3">
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.3em] text-sky-200/80">Fullscreen Play</div>
+                          <div className="mt-1 text-2xl font-black text-white">音ゲーだけを大きく表示</div>
+                          <div className="mt-1 text-sm text-slate-300">Space / Enter で入力。Escape または閉じるで戻れます。</div>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-3">
+                            <div className="text-xs uppercase tracking-[0.18em] text-slate-400">対象文</div>
+                            <div className="mt-2 text-lg font-bold text-white">{text.trim() || "未設定"}</div>
+                          </div>
+                          <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-3">
+                            <div className="text-xs uppercase tracking-[0.18em] text-slate-400">いまの合図</div>
+                            <div className="mt-2 text-3xl font-black text-white">{cueLabel}</div>
+                          </div>
+                          <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-3">
+                            <div className="text-xs uppercase tracking-[0.18em] text-slate-400">スコア</div>
+                            <div className="mt-2 text-3xl font-black text-white">{displayedScore.total ? `${displayedScore.score}%` : "—"}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-stretch gap-2 lg:min-w-[280px]">
+                        <Button onMouseDown={(event) => event.preventDefault()} onClick={preview} disabled={!text.trim() || sessionMode !== "idle"} className="h-12 rounded-2xl px-5">
+                          <Play className="mr-2 h-4 w-4" />
+                          見本だけ流す
                         </Button>
-                      ))}
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <div className="rounded-2xl border bg-white p-4">
-                        <div className="mb-2 text-sm font-medium text-slate-700">速さ</div>
-                        <Slider value={[unitMs]} min={120} max={720} step={20} onValueChange={(value) => setUnitMs(value[0])} />
-                        <div className="mt-2 text-sm text-slate-600">1単位 = {unitMs}ms</div>
-                      </div>
-                      <div className="rounded-2xl border bg-white p-4">
-                        <div className="mb-2 text-sm font-medium text-slate-700">音の高さ</div>
-                        <Slider value={[frequency]} min={300} max={1200} step={10} onValueChange={(value) => setFrequency(value[0])} />
-                        <div className="mt-2 text-sm text-slate-600">{frequency}Hz</div>
-                      </div>
-                      <div className="rounded-2xl border bg-white p-4">
-                        <div className="mb-2 text-sm font-medium text-slate-700">音量</div>
-                        <Slider value={[Math.round(volume * 100)]} min={0} max={60} step={1} onValueChange={(value) => setVolume(value[0] / 100)} />
-                        <div className="mt-2 text-sm text-slate-600">{Math.round(volume * 100)}%</div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <Button onMouseDown={(event) => event.preventDefault()} onClick={preview} disabled={!text.trim() || sessionMode !== "idle"} className="h-11 rounded-2xl px-5">
-                        <Play className="mr-2 h-4 w-4" />
-                        見本だけ流す
-                      </Button>
-                      <Button onMouseDown={(event) => event.preventDefault()} onClick={startGame} disabled={!text.trim() || sessionMode !== "idle"} className="h-11 rounded-2xl px-5">
-                        <Target className="mr-2 h-4 w-4" />
-                        音ゲー開始
-                      </Button>
-                      <Button variant="outline" onMouseDown={(event) => event.preventDefault()} onClick={stopAll} disabled={sessionMode === "idle"} className="h-11 rounded-2xl px-5">
-                        <Square className="mr-2 h-4 w-4" />
-                        停止
-                      </Button>
-                      <Button variant="outline" onMouseDown={(event) => event.preventDefault()} onClick={clearInputState} className="h-11 rounded-2xl px-5">
-                        <RotateCcw className="mr-2 h-4 w-4" />
-                        入力クリア
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-                    <div className="rounded-2xl border bg-white p-4">
-                      <div className="text-sm font-medium text-slate-700">いまの合図</div>
-                      <div className="mt-2 text-4xl font-bold text-slate-900">{cueLabel}</div>
-                      <div className="mt-2 text-sm text-slate-600">対象文字: {activeRow?.char || activeNote?.charLabel || "—"}</div>
-                      <div className="mt-4 grid grid-cols-2 gap-3">
-                        <div className="rounded-3xl border bg-amber-50 p-4 text-center">
-                          <div className="text-xs font-medium text-amber-700">ガイド光</div>
-                          <div className={`mx-auto mt-3 h-16 w-16 rounded-full border-4 transition-all ${guideLampOn ? "animate-pulse border-amber-300 bg-amber-300 shadow-[0_0_40px_rgba(252,211,77,0.95)]" : "border-amber-100 bg-amber-100/40"}`} />
-                          <div className="mt-3 text-sm text-amber-800">{guideLampOn ? "ON" : "OFF"}</div>
-                        </div>
-                        <div className="rounded-3xl border bg-sky-50 p-4 text-center">
-                          <div className="text-xs font-medium text-sky-700">あなたの光</div>
-                          <div className={`mx-auto mt-3 h-16 w-16 rounded-full border-4 transition-all ${playerLampOn ? "animate-pulse border-sky-300 bg-sky-300 shadow-[0_0_40px_rgba(125,211,252,0.95)]" : "border-sky-100 bg-sky-100/40"}`} />
-                          <div className="mt-3 text-sm text-sky-800">{playerLampOn ? "ON" : "OFF"}</div>
-                        </div>
+                        <Button onMouseDown={(event) => event.preventDefault()} onClick={startGame} disabled={!text.trim() || sessionMode !== "idle"} className="h-12 rounded-2xl px-5">
+                          <Target className="mr-2 h-4 w-4" />
+                          音ゲー開始
+                        </Button>
+                        <Button variant="outline" onMouseDown={(event) => event.preventDefault()} onClick={stopAll} disabled={sessionMode === "idle"} className="h-12 rounded-2xl border-white/20 bg-white/5 px-5 text-white hover:bg-white/10">
+                          <Square className="mr-2 h-4 w-4" />
+                          停止
+                        </Button>
+                        <Button variant="outline" onMouseDown={(event) => event.preventDefault()} onClick={clearInputState} className="h-12 rounded-2xl border-white/20 bg-white/5 px-5 text-white hover:bg-white/10">
+                          <RotateCcw className="mr-2 h-4 w-4" />
+                          入力クリア
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-12 rounded-2xl border-white/20 bg-white/10 text-white hover:bg-white/15"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => setIsFullscreenGameOpen(false)}
+                        >
+                          閉じる
+                        </Button>
                       </div>
                     </div>
+                  ) : null}
 
-                    <div className="rounded-2xl border bg-white p-4">
-                      <div className="text-sm font-medium text-slate-700">リアルタイムスコア</div>
-                      <div className="mt-3 grid grid-cols-2 gap-3">
-                        <div className="rounded-2xl bg-slate-50 p-3">
-                          <div className="text-xs text-slate-500">スコア</div>
-                          <div className="mt-1 text-2xl font-bold text-slate-900">{displayedScore.total ? `${displayedScore.score}%` : "—"}</div>
+                  {!isFullscreenGameOpen ? (
+                    <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+                      <div className="space-y-4">
+                        <div className="rounded-3xl border bg-white p-5">
+                          <div className="text-sm font-medium text-slate-700">今回の課題文</div>
+                          <div className="mt-3 text-3xl font-black tracking-wide text-slate-950">{text}</div>
+                          <div className="mt-3 text-sm leading-6 text-slate-600">音ゲー開始を押すと入力モーダルが開きます。文字を決めてスタートすると、自動でゲーム領域に移動して開始します。</div>
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <Button variant="outline" onMouseDown={(event) => event.preventDefault()} onClick={() => openStartModal("edit")} className="rounded-2xl">
+                              課題文を変更
+                            </Button>
+                          </div>
                         </div>
-                        <div className="rounded-2xl bg-slate-50 p-3">
-                          <div className="text-xs text-slate-500">手入力の解読（参考）</div>
-                          <div className="mt-1 text-lg font-bold text-slate-900">{manualDecodedText || "—"}</div>
+
+                        <div className="rounded-2xl border bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                          Space / Enter はゲーム操作に使います。開始前の文字入力はモーダルに分け、ゲーム開始時にフォーカスをゲーム側へ寄せます。
                         </div>
-                        <div className="rounded-2xl bg-slate-50 p-3">
-                          <div className="text-xs text-slate-500">Perfect / Good</div>
-                          <div className="mt-1 text-lg font-bold text-slate-900">{displayedScore.total ? `${displayedScore.perfect} / ${displayedScore.good}` : "—"}</div>
+
+                        <div className="grid gap-4 md:grid-cols-3">
+                          <div className="rounded-2xl border bg-white p-4">
+                            <div className="mb-2 text-sm font-medium text-slate-700">速さ</div>
+                            <Slider value={[unitMs]} min={120} max={720} step={20} onValueChange={(value) => setUnitMs(value[0])} />
+                            <div className="mt-2 text-sm text-slate-600">1単位 = {unitMs}ms</div>
+                          </div>
+                          <div className="rounded-2xl border bg-white p-4">
+                            <div className="mb-2 text-sm font-medium text-slate-700">音の高さ</div>
+                            <Slider value={[frequency]} min={300} max={1200} step={10} onValueChange={(value) => setFrequency(value[0])} />
+                            <div className="mt-2 text-sm text-slate-600">{frequency}Hz</div>
+                          </div>
+                          <div className="rounded-2xl border bg-white p-4">
+                            <div className="mb-2 text-sm font-medium text-slate-700">音量</div>
+                            <Slider value={[Math.round(volume * 100)]} min={0} max={60} step={1} onValueChange={(value) => setVolume(value[0] / 100)} />
+                            <div className="mt-2 text-sm text-slate-600">{Math.round(volume * 100)}%</div>
+                          </div>
                         </div>
-                        <div className="rounded-2xl bg-slate-50 p-3">
-                          <div className="text-xs text-slate-500">Miss</div>
-                          <div className="mt-1 text-lg font-bold text-slate-900">{displayedScore.total ? `${displayedScore.miss}` : "—"}</div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <Button onMouseDown={(event) => event.preventDefault()} onClick={preview} disabled={!text.trim() || sessionMode !== "idle"} className="h-11 rounded-2xl px-5">
+                            <Play className="mr-2 h-4 w-4" />
+                            見本だけ流す
+                          </Button>
+                          <Button onMouseDown={(event) => event.preventDefault()} onClick={() => openStartModal("start")} disabled={!text.trim() || sessionMode !== "idle"} className="h-11 rounded-2xl px-5">
+                            <Target className="mr-2 h-4 w-4" />
+                            音ゲー開始
+                          </Button>
+                          <Button variant="outline" onMouseDown={(event) => event.preventDefault()} onClick={stopAll} disabled={sessionMode === "idle"} className="h-11 rounded-2xl px-5">
+                            <Square className="mr-2 h-4 w-4" />
+                            停止
+                          </Button>
+                          <Button variant="outline" onMouseDown={(event) => event.preventDefault()} onClick={clearInputState} className="h-11 rounded-2xl px-5">
+                            <RotateCcw className="mr-2 h-4 w-4" />
+                            入力クリア
+                          </Button>
+                          <Button variant="outline" onMouseDown={(event) => event.preventDefault()} onClick={() => setIsFullscreenGameOpen(true)} className="h-11 rounded-2xl px-5">
+                            フルスクリーンで遊ぶ
+                          </Button>
                         </div>
-                        <div className="rounded-2xl bg-slate-50 p-3">
-                          <div className="text-xs text-slate-500">コンボ</div>
-                          <div className="mt-1 text-lg font-bold text-slate-900">{displayedScore.total ? `${displayedScore.combo}` : "—"}</div>
+                      </div>
+
+                      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+                        <div className="rounded-2xl border bg-white p-4">
+                          <div className="text-sm font-medium text-slate-700">いまの合図</div>
+                          <div className="mt-2 text-4xl font-bold text-slate-900">{cueLabel}</div>
+                          <div className="mt-2 text-sm text-slate-600">対象文字: {activeRow?.char || activeNote?.charLabel || "—"}</div>
+                          <div className="mt-4 grid grid-cols-2 gap-3">
+                            <div className="rounded-3xl border bg-amber-50 p-4 text-center">
+                              <div className="text-xs font-medium text-amber-700">ガイド光</div>
+                              <div className={`mx-auto mt-3 h-16 w-16 rounded-full border-4 transition-all ${guideLampOn ? "animate-pulse border-amber-300 bg-amber-300 shadow-[0_0_40px_rgba(252,211,77,0.95)]" : "border-amber-100 bg-amber-100/40"}`} />
+                              <div className="mt-3 text-sm text-amber-800">{guideLampOn ? "ON" : "OFF"}</div>
+                            </div>
+                            <div className="rounded-3xl border bg-sky-50 p-4 text-center">
+                              <div className="text-xs font-medium text-sky-700">あなたの光</div>
+                              <div className={`mx-auto mt-3 h-16 w-16 rounded-full border-4 transition-all ${playerLampOn ? "animate-pulse border-sky-300 bg-sky-300 shadow-[0_0_40px_rgba(125,211,252,0.95)]" : "border-sky-100 bg-sky-100/40"}`} />
+                              <div className="mt-3 text-sm text-sky-800">{playerLampOn ? "ON" : "OFF"}</div>
+                            </div>
+                          </div>
                         </div>
-                        <div className="rounded-2xl bg-slate-50 p-3">
-                          <div className="text-xs text-slate-500">最大コンボ</div>
-                          <div className="mt-1 text-lg font-bold text-slate-900">{displayedScore.total ? `${displayedScore.maxCombo}` : "—"}</div>
+
+                        <div className="rounded-2xl border bg-white p-4">
+                          <div className="text-sm font-medium text-slate-700">リアルタイムスコア</div>
+                          <div className="mt-3 grid grid-cols-2 gap-3">
+                            <div className="rounded-2xl bg-slate-50 p-3">
+                              <div className="text-xs text-slate-500">スコア</div>
+                              <div className="mt-1 text-2xl font-bold text-slate-900">{displayedScore.total ? `${displayedScore.score}%` : "—"}</div>
+                            </div>
+                            <div className="rounded-2xl bg-slate-50 p-3">
+                              <div className="text-xs text-slate-500">手入力の解読（参考）</div>
+                              <div className="mt-1 text-lg font-bold text-slate-900">{manualDecodedText || "—"}</div>
+                            </div>
+                            <div className="rounded-2xl bg-slate-50 p-3">
+                              <div className="text-xs text-slate-500">Perfect / Good</div>
+                              <div className="mt-1 text-lg font-bold text-slate-900">{displayedScore.total ? `${displayedScore.perfect} / ${displayedScore.good}` : "—"}</div>
+                            </div>
+                            <div className="rounded-2xl bg-slate-50 p-3">
+                              <div className="text-xs text-slate-500">Miss</div>
+                              <div className="mt-1 text-lg font-bold text-slate-900">{displayedScore.total ? `${displayedScore.miss}` : "—"}</div>
+                            </div>
+                            <div className="rounded-2xl bg-slate-50 p-3">
+                              <div className="text-xs text-slate-500">コンボ</div>
+                              <div className="mt-1 text-lg font-bold text-slate-900">{displayedScore.total ? `${displayedScore.combo}` : "—"}</div>
+                            </div>
+                            <div className="rounded-2xl bg-slate-50 p-3">
+                              <div className="text-xs text-slate-500">最大コンボ</div>
+                              <div className="mt-1 text-lg font-bold text-slate-900">{displayedScore.total ? `${displayedScore.maxCombo}` : "—"}</div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                </div>
+                  ) : null}
 
-                <div className="rounded-3xl border bg-slate-950 p-4 text-white">
+                <div ref={gameStageRef} className={`rounded-3xl border p-4 text-white ${isFullscreenGameOpen ? "flex flex-1 min-h-0 flex-col border-slate-700 bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.18),transparent_28%),linear-gradient(180deg,#020617_0%,#0f172a_100%)] shadow-[0_30px_90px_rgba(2,6,23,0.65)]" : "bg-slate-950"}`}>
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <div className="text-sm text-slate-300">文字ガイド</div>
@@ -928,13 +1138,13 @@ export default function WabunMorseAudioCanvas() {
                     </div>
                   </div>
 
-                  <div className="mb-3 overflow-x-auto rounded-3xl border border-slate-700 bg-slate-900/70 p-4">
-                    <div className="flex min-w-max items-center gap-3">
+                  <div data-testid="char-guide-viewport" className={charGuideViewportClassName}>
+                    <div data-testid="char-guide-track" className={charGuideTrackClassName}>
                       {displayChars.map((char, index) => {
                         const isCurrent = index === activeRowIndex;
                         const isPast = activeRowIndex > index;
                         return (
-                          <div key={`${char}-${index}`} className={`flex h-20 w-20 items-center justify-center rounded-3xl border text-4xl font-black transition-all ${isCurrent ? "scale-105 border-emerald-300 bg-emerald-300/20 text-white shadow-[0_0_26px_rgba(52,211,153,0.35)]" : isPast ? "border-slate-600 bg-slate-800 text-slate-300" : "border-slate-700 bg-slate-900 text-slate-500"}`}>
+                          <div key={`${char}-${index}`} className={`${charGuideCellClassName} ${isCurrent ? "scale-105 border-emerald-300 bg-emerald-300/20 text-white shadow-[0_0_26px_rgba(52,211,153,0.35)]" : isPast ? "border-slate-600 bg-slate-800 text-slate-300" : "border-slate-700 bg-slate-900 text-slate-500"}`}>
                             {char}
                           </div>
                         );
@@ -955,7 +1165,7 @@ export default function WabunMorseAudioCanvas() {
                     <span className="rounded-full border border-sky-300/40 bg-sky-300/15 px-3 py-1 text-sky-100">青い光 = あなたの入力</span>
                   </div>
 
-                  <div ref={laneRef} className="relative h-44 overflow-hidden rounded-3xl border border-slate-800 bg-[linear-gradient(180deg,#0f172a_0%,#111827_100%)]">
+                  <div ref={laneRef} className={`relative overflow-hidden rounded-3xl border border-slate-800 bg-[linear-gradient(180deg,#0f172a_0%,#111827_100%)] ${isFullscreenGameOpen ? "h-[min(42vh,360px)] min-h-[240px] flex-1" : "h-44"}`}>
                     {judgePopup ? (
                       <div className="pointer-events-none absolute inset-x-0 top-4 z-40 flex justify-center">
                         <div key={judgePopup.id} className={`rounded-full bg-slate-950/80 px-5 py-2 text-2xl font-black tracking-wider ${judgePopup.color} shadow-[0_0_25px_rgba(15,23,42,0.65)] animate-pulse`}>
@@ -1036,50 +1246,133 @@ export default function WabunMorseAudioCanvas() {
                       if (sessionMode === "idle") stopIdleTone();
                     }}
                     disabled={sessionMode === "countdown" || sessionMode === "preview"}
-                    className={`mt-4 flex h-24 w-full items-center justify-center rounded-3xl border text-lg font-semibold transition-all ${isKeying ? "border-sky-300 bg-sky-300/20 text-white shadow-[0_0_28px_rgba(125,211,252,0.35)]" : "border-slate-700 bg-slate-900 text-slate-200"} ${sessionMode === "countdown" || sessionMode === "preview" ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-slate-900/80"}`}
+                    className={`mt-4 flex w-full items-center justify-center rounded-3xl border text-lg font-semibold transition-all ${isKeying ? "border-sky-300 bg-sky-300/20 text-white shadow-[0_0_28px_rgba(125,211,252,0.35)]" : "border-slate-700 bg-slate-900 text-slate-200"} ${sessionMode === "countdown" || sessionMode === "preview" ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-slate-900/80"} ${isFullscreenGameOpen ? "h-20" : "h-24"}`}
                   >
                     {sessionMode === "countdown" ? `${countdown}` : sessionMode === "running" ? (isKeying ? "押している間、あなたの音と光がON" : "Enter / Space またはここを長押し") : sessionMode === "preview" ? "見本再生中はここでは押せない" : playerLampOn ? "待機中の音確認中" : "待機中はどこでも Space / Enter、またはここを押して音確認できる"}
                   </button>
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
-                  <div className="rounded-2xl border bg-white p-4">
-                    <div className="text-sm font-medium text-slate-700">次に来る文字</div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {timedRows.slice(Math.max(0, activeRowIndex), Math.max(0, activeRowIndex) + 6).length ? (
-                        timedRows.slice(Math.max(0, activeRowIndex), Math.max(0, activeRowIndex) + 6).map((row, index) => (
-                          <div key={`${row.char}-${index}`} className={`rounded-2xl border px-3 py-2 ${index === 0 ? "border-emerald-300 bg-emerald-50" : "bg-slate-50"}`}>
-                            <div className="text-lg font-bold text-slate-900">{row.char}</div>
-                            <div className="mt-1 font-mono text-xs text-slate-600">{row.code}</div>
+                {!isFullscreenGameOpen ? (
+                  <>
+                    <div className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
+                      <div className="rounded-2xl border bg-white p-4">
+                        <div className="text-sm font-medium text-slate-700">次に来る文字</div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {timedRows.slice(Math.max(0, activeRowIndex), Math.max(0, activeRowIndex) + 6).length ? (
+                            timedRows.slice(Math.max(0, activeRowIndex), Math.max(0, activeRowIndex) + 6).map((row, index) => (
+                              <div key={`${row.char}-${index}`} className={`rounded-2xl border px-3 py-2 ${index === 0 ? "border-emerald-300 bg-emerald-50" : "bg-slate-50"}`}>
+                                <div className="text-lg font-bold text-slate-900">{row.char}</div>
+                                <div className="mt-1 font-mono text-xs text-slate-600">{row.code}</div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-sm text-slate-500">まだ表示できる文字がありません。</div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border bg-white p-4">
+                        <div className="text-sm font-medium text-slate-700">あなたの入力</div>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <div className="rounded-2xl bg-slate-50 p-3">
+                            <div className="text-xs text-slate-500">いまのコード</div>
+                            <div className="mt-1 font-mono text-xl font-bold text-slate-900">{manualCurrentCodeState || "—"}</div>
+                            <div className="mt-1 text-xs text-slate-500">仮の候補: {manualPendingChar}</div>
                           </div>
-                        ))
-                      ) : (
-                        <div className="text-sm text-slate-500">まだ表示できる文字がありません。</div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border bg-white p-4">
-                    <div className="text-sm font-medium text-slate-700">あなたの入力</div>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-2xl bg-slate-50 p-3">
-                        <div className="text-xs text-slate-500">いまのコード</div>
-                        <div className="mt-1 font-mono text-xl font-bold text-slate-900">{manualCurrentCodeState || "—"}</div>
-                        <div className="mt-1 text-xs text-slate-500">仮の候補: {manualPendingChar}</div>
-                      </div>
-                      <div className="rounded-2xl bg-slate-50 p-3">
-                        <div className="text-xs text-slate-500">手入力の解読（参考）</div>
-                        <div className="mt-1 text-xl font-bold text-slate-900">{manualDecodedText || "—"}</div>
-                        <div className="mt-1 text-xs text-slate-500">{manualStatus}</div>
+                          <div className="rounded-2xl bg-slate-50 p-3">
+                            <div className="text-xs text-slate-500">手入力の解読（参考）</div>
+                            <div className="mt-1 text-xl font-bold text-slate-900">{manualDecodedText || "—"}</div>
+                            <div className="mt-1 text-xs text-slate-500">{manualStatus}</div>
+                          </div>
+                        </div>
                       </div>
                     </div>
+
+                    <div className="rounded-2xl border bg-slate-50 p-3 text-sm leading-6 text-slate-700">
+                      見本再生ではガイド音とガイド光がありますが、音ゲー中はどちらも使いません。青いバーがあなたの実入力です。採点はその青いバーとノーツの重なりをもとに行います。
+                    </div>
+                  </>
+                ) : (
+                  <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr]">
+                    <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
+                      <div className="text-xs uppercase tracking-[0.18em] text-slate-400">次に来る文字</div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {timedRows.slice(Math.max(0, activeRowIndex), Math.max(0, activeRowIndex) + 6).length ? (
+                          timedRows.slice(Math.max(0, activeRowIndex), Math.max(0, activeRowIndex) + 6).map((row, index) => (
+                            <div key={`${row.char}-${index}`} className={`rounded-2xl border px-3 py-2 ${index === 0 ? "border-emerald-300 bg-emerald-300/15 text-white" : "border-white/10 bg-white/5 text-slate-200"}`}>
+                              <div className="text-lg font-bold">{row.char}</div>
+                              <div className="mt-1 font-mono text-xs opacity-80">{row.code}</div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-sm text-slate-400">まだ表示できる文字がありません。</div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
+                        <div className="text-xs uppercase tracking-[0.18em] text-slate-400">いまのコード</div>
+                        <div className="mt-2 font-mono text-2xl font-black text-white">{manualCurrentCodeState || "—"}</div>
+                        <div className="mt-2 text-sm text-slate-300">仮の候補: {manualPendingChar}</div>
+                      </div>
+                      <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
+                        <div className="text-xs uppercase tracking-[0.18em] text-slate-400">入力の解読</div>
+                        <div className="mt-2 text-2xl font-black text-white">{manualDecodedText || "—"}</div>
+                        <div className="mt-2 text-sm text-slate-300">{manualStatus}</div>
+                      </div>
+                    </div>
                   </div>
+                )}
                 </div>
 
-                <div className="rounded-2xl border bg-slate-50 p-3 text-sm leading-6 text-slate-700">
-                  見本再生ではガイド音とガイド光がありますが、音ゲー中はどちらも使いません。青いバーがあなたの実入力です。採点はその青いバーとノーツの重なりをもとに行います。
-                </div>
-              </>
+                {!isFullscreenGameOpen && isStartModalOpen ? (
+                  <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/55 px-4 backdrop-blur-sm">
+                    <div role="dialog" aria-modal="true" aria-label="開始する文字を入力" className="w-full max-w-2xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.28)]">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="text-sm font-medium text-slate-500">Start Setup</div>
+                          <div className="mt-1 text-2xl font-black text-slate-950">やりたい文字を入力</div>
+                          <div className="mt-2 text-sm text-slate-600">スタートするとモーダルを閉じてゲーム領域へ移動し、そのままカウントダウン開始です。</div>
+                        </div>
+                        <Button variant="outline" onMouseDown={(event) => event.preventDefault()} onClick={closeStartModal} className="rounded-2xl">
+                          キャンセル
+                        </Button>
+                      </div>
+
+                      <div className="mt-5 space-y-4">
+                        <Textarea
+                          ref={startModalInputRef}
+                          value={draftStartText}
+                          onChange={(event) => setDraftStartText(event.target.value)}
+                          className="min-h-28 rounded-3xl bg-white"
+                          placeholder="たとえば：こんにちは"
+                        />
+
+                        <div className="flex flex-wrap gap-2">
+                          {SAMPLE_TEXTS.map((sample) => (
+                            <Button key={`start-modal-${sample}`} variant="secondary" className="rounded-2xl" onMouseDown={(event) => event.preventDefault()} onClick={() => setDraftStartText(sample)}>
+                              {sample}
+                            </Button>
+                          ))}
+                        </div>
+
+                        <div className="flex flex-wrap justify-end gap-2">
+                          {startModalMode === "edit" ? (
+                            <Button onMouseDown={(event) => event.preventDefault()} onClick={confirmStartModal} disabled={!draftStartText.trim()} className="rounded-2xl px-6">
+                              保存
+                            </Button>
+                          ) : (
+                            <Button onMouseDown={(event) => event.preventDefault()} onClick={confirmStartModal} disabled={!draftStartText.trim()} className="rounded-2xl px-6">
+                              スタート
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             ) : (
               <div className="space-y-4">
                 <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">

@@ -15,6 +15,14 @@ body {
   color: #0f172a;
 }
 
+.rhythm-fullscreen {
+  overscroll-behavior: contain;
+}
+
+.rhythm-fullscreen:focus {
+  outline: none;
+}
+
 button,
 textarea,
 input {
